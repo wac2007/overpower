@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -14,9 +15,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
+func isInStringSlice(target string, list []string) bool {
+	for _, t := range list {
+		if t == target {
+			return true
+		}
+	}
+	return false
+}
+
 var cluster string
 
-var workerCmd = &cobra.Command{
+var ecsCmd = &cobra.Command{
 	Use:   "ecs",
 	Short: "Check status of ecs tasks",
 	Args:  cobra.ExactArgs(1),
@@ -64,7 +74,8 @@ var workerCmd = &cobra.Command{
 		r := regexp.MustCompile(`.+\/(.+)$`)
 
 		var (
-			rows []table.Row
+			rows               []table.Row
+			taskDefinitionList []string
 		)
 
 		for i, task := range tasks.Tasks {
@@ -77,6 +88,24 @@ var workerCmd = &cobra.Command{
 				*task.LastStatus,
 				*task.DesiredStatus,
 			})
+
+			// Check if task definition is in array
+			if !isInStringSlice(*task.TaskDefinitionArn, taskDefinitionList) {
+				taskDefinitionList = append(taskDefinitionList, *task.TaskDefinitionArn)
+			}
+		}
+
+		for _, tdArn := range taskDefinitionList {
+			tdef, err := svc.DescribeTaskDefinitionWithContext(
+				ctx,
+				&ecs.DescribeTaskDefinitionInput{
+					TaskDefinition: &tdArn,
+				},
+			)
+			if err != nil {
+				log.Fatal(err)
+			}
+			fmt.Print(tdef)
 		}
 
 		t := table.NewWriter()
@@ -100,6 +129,6 @@ var workerCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(workerCmd)
-	workerCmd.Flags().StringVarP(&cluster, "cluster", "c", "", "Cluster where service is hosted")
+	rootCmd.AddCommand(ecsCmd)
+	ecsCmd.Flags().StringVarP(&cluster, "cluster", "c", "", "Cluster where service is hosted")
 }
